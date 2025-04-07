@@ -1,0 +1,10 @@
+{
+    "SERVER_IP": "localhost",
+    "SERVER_PORT": "8000",
+    "ORG": "default",
+    "PASSWORD": "treacle_authpass",
+    "LOG_LEVEL": "DEBUG",
+    "MAX_RETRIES": 5,
+    "BACKOFF_FACTOR": 2,
+    "MAX_BACKOFF_TIME":120
+}
