@@ -1,15 +1,14 @@
 import asyncio
-import httpx
 import signal
 import websockets
 import sys
 
 from urllib.parse import urlencode
-from websockets.exceptions import ConnectionClosed
 
-from client.config import load_config
-from client.config import logger
-from client.utils import get_system_uuid
+from client.config import load_config, logger
+from client.auth import obtain_jwt, is_token_expired
+from client.comms import client_rmq_manager
+from client.utils import get_system_uuid, interruptible_sleep
 
 config = load_config()
 
@@ -30,54 +29,6 @@ def handle_shutdown(signum, frame):
 
 signal.signal(signal.SIGINT, handle_shutdown)
 signal.signal(signal.SIGTERM, handle_shutdown)
-
-async def interruptible_sleep(duration):
-    """
-    Custom sleep that checks for shutdown signal and interrupts if necessary.
-    """
-    step = 1  # Sleep in 1-second intervals
-    for _ in range(duration):
-        if not running:
-            break  # Stop sleeping if shutdown signal received
-        await asyncio.sleep(step)
-
-async def obtain_jwt(system_uuid, password, max_retries=5, backoff_factor=2, max_backoff_time=120):
-    url = f"http://{config['SERVER_IP']}:{config['SERVER_PORT']}/auth/get_token"
-    retry_attempts = 0
-
-    while retry_attempts < max_retries:
-        if not running:
-            logger.info("client: shutdown triggered during auth. routine...")
-            return None
-
-        try:
-            logger.debug(f"client: sending request to obtain JWT at {url}")
-            payload = {"system_uuid": system_uuid, "password": password}
-
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload)
-
-            # logger.debug(f"client: raw response: {response.status_code} - {response.text}")
-            response.raise_for_status()
-
-            token_data = response.json()
-            # logger.debug(f"client: parsed token data: {token_data}")
-            token = token_data["data"]["access_token"]
-            logger.info("client: successfully obtained JWT.")
-            return token
-
-        except httpx.HTTPError as e:
-            logger.exception("client: HTTP error occurred during token acquisition... is the server up?", exc_info=False)
-        except Exception as e:
-            logger.exception("client: unexpected error during token acquisition.")
-
-        retry_attempts += 1
-        wait_time = min(backoff_factor ** retry_attempts, max_backoff_time)
-        logger.info(f"client: retrying auth. in {wait_time} seconds...")
-        await interruptible_sleep(wait_time)
-
-    logger.error("client: failed to authenticate despite multiple attempts.")
-    return None
 
 # main agent loop
 async def agent():
@@ -102,10 +53,10 @@ async def agent():
     retry_attempts = 0
     rabbit_connection = None
 
-    logger.debug("client: agent loop initializing")
+    logger.debug("client: agent loop initializing.")
     while running:
         try:
-            token = await obtain_jwt(system_uuid, PASSWORD)
+            token = await obtain_jwt(running, system_uuid, PASSWORD, MAX_RETRIES, BACKOFF_FACTOR, MAX_BACKOFF_TIME)
             if not token:
                 logger.error("client: failed to authenticate.")
                 return
@@ -119,8 +70,22 @@ async def agent():
                 try:
                     retry_attempts = 0  # Reset retry attempts after a successful connection
                     
+                    # Connect to RabbitMQ
+                    await client_rmq_manager.connect_to_rabbit(system_uuid)
+                    # Get queues
+                    # action_queue = client_rmq_manager.get_queue("action")
+                    # telemetry_queue = client_rmq_manager.get_queue("proc_telemetry")
+                    
                     # agent main loop
                     while running:
+                        # prevent stale token scenario by refreshing tokens once in a while
+                        if is_token_expired(token):
+                            token = await obtain_jwt(running, system_uuid, PASSWORD, MAX_RETRIES, BACKOFF_FACTOR, MAX_BACKOFF_TIME)
+                            logger.debug("client: token refreshed!")
+                            if not token:
+                                logger.error("client: failed to refresh token.")
+                                return
+
                         # You can send or receive data from the WebSocket server if needed
                         # Example: await websocket.send("Some data")
                         # Or some form of inbound message handling
@@ -131,19 +96,19 @@ async def agent():
                             break
                         
                         # Sleep for 5 seconds before the next operation
-                        await interruptible_sleep(5)
+                        await interruptible_sleep(running, 5)
 
                 except Exception as e:
                     logger.error(f"some error: {e}")
 
         except Exception as e:
-            logger.error("client: looks like the server &/ rabbit is down ☠️")
+            logger.error("client: looks like RabbitMQ is down! ☠️")
             if str(e):
                 logger.error(f"{e}")
             retry_attempts += 1
             wait_time = min(BACKOFF_FACTOR ** retry_attempts, MAX_BACKOFF_TIME)  # Exponential backoff, capped
             logger.info(f"client: retrying WebSocket connection in {wait_time} seconds...")
-            await interruptible_sleep(wait_time)
+            await interruptible_sleep(running, wait_time)
 
     if not running:
         logger.info("client: graceful shutdown target reached...")

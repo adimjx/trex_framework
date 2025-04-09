@@ -25,7 +25,7 @@ CONFIG = {
     # JWT
     "JWT_KEY": os.getenv("JWT_KEY", "84Cfe@GjsysF?s/u(o`nZ@Ak*W@0^h"),  # Use a strong secret key
     "ALGORITHM": "HS256",  # JWT algorithm
-    "ACCESS_TOKEN_EXPIRE_MINUTES": 5,  # Token expiration time
+    "ACCESS_TOKEN_EXPIRE_MINUTES": 60,  # Token expiration time
     
     # LOGGING
     "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO").upper(),  # default to INFO if not set in .env

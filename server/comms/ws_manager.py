@@ -72,9 +72,9 @@ class WSManager:
                 },
                 upsert=True
             )
-            logger.debug(f"ws: logged connection for {system_uuid} at {connected_at}.")
+            logger.debug(f"ws_manager_conn: logged connection for {system_uuid} at {connected_at}.")
         except Exception as e:
-            logger.error(f"ws: failed to log connection for {system_uuid}: {e}")
+            logger.error(f"ws_manager_conn: failed to log connection for {system_uuid}: {e}")
 
     async def _log_disconnection(self, system_uuid: str):
         try:
@@ -85,9 +85,9 @@ class WSManager:
                 {"system_uuid": system_uuid, "status": "connected"},
                 {"$set": {"status": "disconnected", "last_disconnected": disconnected_at}}
             )
-            logger.debug(f"ws: logged disconnection for {system_uuid} at {disconnected_at}.")
+            logger.debug(f"ws_manager_conn: logged disconnection for {system_uuid} at {disconnected_at}.")
         except Exception as e:
-            logger.error(f"ws: failed to log disconnection: {e}")
+            logger.error(f"ws_manager_conn: failed to log disconnection: {e}")
 
 # Singleton instance to use app-wide
 ws_manager_conn = WSManager()

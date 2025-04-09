@@ -1,0 +1,1 @@
+from .rmq_manager import client_rmq_manager

@@ -10,6 +10,7 @@ Central server app; All agents connect here.
 - Connects to RabbitMQ (task allocation & data streaming).
 - Stores telemetry & interaction data in Mongo.
 """
+
 import sys
 
 from contextlib import asynccontextmanager
@@ -99,7 +100,7 @@ import random
 # Define colors
 colors = [
     '\033[92m',  # Green
-    '\033[94m',  # Blue
+    # '\033[94m',  # Blue
     '\033[91m',  # Red
 ]
 reset = '\033[0m'
