@@ -6,42 +6,42 @@ from client.utils import interruptible_sleep
 
 config = load_config()
 
-async def obtain_jwt(running, system_uuid, password, max_retries=5, backoff_factor=2, max_backoff_time=120):
+async def obtain_jwt(running_event, system_uuid, password, max_retries=5, backoff_factor=2, max_backoff_time=120):
     url = f"http://{config['SERVER_IP']}:{config['SERVER_PORT']}/auth/get_token"
     retry_attempts = 0
 
     while retry_attempts < max_retries:
-        if not running:
-            logger.info("client: shutdown triggered during auth. routine...")
+        if not running_event.is_set():
+            logger.info("client_auth: shutdown triggered during auth. routine...")
             return None
 
         try:
-            logger.debug(f"client: sending request to obtain JWT at {url}")
+            logger.debug(f"client_auth: sending request to obtain JWT at {url}")
             payload = {"system_uuid": system_uuid, "password": password}
 
             async with httpx.AsyncClient() as client:
                 response = await client.post(url, json=payload)
 
-            # logger.debug(f"client: raw response: {response.status_code} - {response.text}")
+            # logger.debug(f"client_auth: raw response: {response.status_code} - {response.text}")
             response.raise_for_status()
 
             token_data = response.json()
-            # logger.debug(f"client: parsed token data: {token_data}")
+            # logger.debug(f"client_auth: parsed token data: {token_data}")
             token = token_data["data"]["access_token"]
-            logger.debug("client: successfully obtained JWT.")
+            logger.debug("client_auth: successfully obtained JWT.")
             return token
 
         except httpx.HTTPError as e:
-            logger.exception("client: HTTP error occurred during token acquisition... is the server up?", exc_info=False)
+            logger.exception("client_auth: HTTP error occurred during token acquisition... is the server up?", exc_info=False)
         except Exception as e:
-            logger.exception("client: unexpected error during token acquisition.")
+            logger.exception("client_auth: unexpected error during token acquisition.")
 
         retry_attempts += 1
         wait_time = min(backoff_factor ** retry_attempts, max_backoff_time)
-        logger.info(f"client: retrying auth. in {wait_time} seconds...")
-        await interruptible_sleep(wait_time)
+        logger.info(f"client_auth: retrying auth. in {wait_time} seconds...")
+        await interruptible_sleep(running_event, wait_time)
 
-    logger.error("client: failed to authenticate despite multiple attempts.")
+    logger.error("client_auth: failed to authenticate despite multiple attempts.")
     return None
 
 def is_token_expired(token: str, buffer_seconds: int = 1) -> bool:

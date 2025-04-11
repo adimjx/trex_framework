@@ -2,6 +2,8 @@
 
 """
 Generic JSON response decorator
+-x-x-
+Wraps the return dict/string in a standard format.
 """
 
 from fastapi.responses import JSONResponse

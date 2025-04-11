@@ -19,10 +19,7 @@ from fastapi import FastAPI
 from server.decorators.json_response import json_response
 from server.config import logger
 from server.auth import auth_router
-from server.comms import (
-    rmq_manager_conn,
-    mongo_manager_conn
-)
+from server.comms import rmq_manager_conn, mongo_manager_conn
 
 """
 FastAPI Lifespan

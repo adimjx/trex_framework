@@ -13,19 +13,25 @@ from client.utils import get_system_uuid, interruptible_sleep
 config = load_config()
 
 # Agent runtime flag
-running = True
+"""
+boolean flags arent always reliably noticed across all the await calls,
+especially under heavy async flow or due to how variable access is optimized in the interpreter.
+
+use asyncio.Event instead of a raw bool.
+"""
+running_event = asyncio.Event()
+running_event.set()
 
 # Shutdown signal handler
 def handle_shutdown(signum, frame):
     """
     Signal handler to gracefully shut down the agent process.
     """
-    global running
     sys.stdout.write("\n")        # move to next line
     sys.stdout.write("\033[F")    # move cursor up one line
     sys.stdout.write("\033[K")    # clear the line
     logger.info("client: received shutdown signal, shutting down gracefully...")
-    running = False
+    running_event.clear()
 
 signal.signal(signal.SIGINT, handle_shutdown)
 signal.signal(signal.SIGTERM, handle_shutdown)
@@ -54,9 +60,9 @@ async def agent():
     rabbit_connection = None
 
     logger.debug("client: agent loop initializing.")
-    while running:
+    while running_event.is_set():
         try:
-            token = await obtain_jwt(running, system_uuid, PASSWORD, MAX_RETRIES, BACKOFF_FACTOR, MAX_BACKOFF_TIME)
+            token = await obtain_jwt(running_event, system_uuid, PASSWORD, MAX_RETRIES, BACKOFF_FACTOR, MAX_BACKOFF_TIME)
             if not token:
                 logger.error("client: failed to authenticate.")
                 return
@@ -77,10 +83,10 @@ async def agent():
                     # telemetry_queue = client_rmq_manager.get_queue("proc_telemetry")
                     
                     # agent main loop
-                    while running:
+                    while running_event.is_set():
                         # prevent stale token scenario by refreshing tokens once in a while
                         if is_token_expired(token):
-                            token = await obtain_jwt(running, system_uuid, PASSWORD, MAX_RETRIES, BACKOFF_FACTOR, MAX_BACKOFF_TIME)
+                            token = await obtain_jwt(running_event, system_uuid, PASSWORD, MAX_RETRIES, BACKOFF_FACTOR, MAX_BACKOFF_TIME)
                             logger.debug("client: token refreshed!")
                             if not token:
                                 logger.error("client: failed to refresh token.")
@@ -96,21 +102,21 @@ async def agent():
                             break
                         
                         # Sleep for 5 seconds before the next operation
-                        await interruptible_sleep(running, 5)
+                        await interruptible_sleep(running_event, 5)
 
                 except Exception as e:
-                    logger.error(f"some error: {e}")
+                    logger.error(f"client: {e}")
 
         except Exception as e:
-            logger.error("client: looks like RabbitMQ is down! ☠️")
+            logger.error("client: looks like some services are down! ☠️")
             if str(e):
                 logger.error(f"{e}")
             retry_attempts += 1
             wait_time = min(BACKOFF_FACTOR ** retry_attempts, MAX_BACKOFF_TIME)  # Exponential backoff, capped
             logger.info(f"client: retrying WebSocket connection in {wait_time} seconds...")
-            await interruptible_sleep(running, wait_time)
+            await interruptible_sleep(running_event, wait_time)
 
-    if not running:
+    if not running_event.is_set():
         logger.info("client: graceful shutdown target reached...")
 
 if __name__ == "__main__":
