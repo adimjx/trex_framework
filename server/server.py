@@ -15,11 +15,14 @@ import sys
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from server.config import CONFIG
 from server.decorators.json_response import json_response
 from server.config import logger
 from server.auth import auth_router
 from server.comms import rmq_manager_conn, mongo_manager_conn
+from server.gql.router import graphql_app
 
 """
 FastAPI Lifespan
@@ -36,7 +39,7 @@ app-wide.
 """
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # startup logic
+    # --- startup logic ---
     try:
         await rmq_manager_conn.connect_to_rabbit()
         await mongo_manager_conn.connect_to_mongo()
@@ -45,21 +48,29 @@ async def lifespan(app: FastAPI):
         sys.exit(1)
     
     try:
-        # --- Yield to app ---
+        # --- yield to app ---
         yield
     finally:
-        # --- Shutdown Logic ---
+        # --- shutdown logic ---
         sys.stdout.write("\n")        # move to next line
         sys.stdout.write("\033[F")    # move cursor up one line
         sys.stdout.write("\033[K")    # clear the line
         logger.info("server: shutting down server... /ws/ will be closed")
 
-        # Clean up connections
+        # clean up connections
         await mongo_manager_conn.close()
         await rmq_manager_conn.close()
 
 app = FastAPI(lifespan=lifespan)
-app.include_router(auth_router, prefix="/auth")
+
+# middleware setup
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[CONFIG["PUBLIC_FRONTENT_URL"]],  # allow only frontend
+    allow_credentials=True,
+    allow_methods=["*"],  # allow all HTTP methods
+    allow_headers=["*"],  # allow all headers
+)
 
 # root as healthcheck endpoint
 @app.get("/")
@@ -67,6 +78,11 @@ app.include_router(auth_router, prefix="/auth")
 async def healthcheck():
     logger.debug("server: healthcheck endpoint hit!")
     return "healthy"
+
+# auth router
+app.include_router(auth_router, prefix="/auth")
+# graphql router
+app.include_router(graphql_app, prefix="/graphql")
 
 ascii_art = r"""
   ___                                      .-~. /_"-._

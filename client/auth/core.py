@@ -1,3 +1,5 @@
+# client/auth/core.py
+
 import httpx, jwt, time
 
 from client.config import load_config

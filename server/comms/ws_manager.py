@@ -1,3 +1,5 @@
+# server/comms/ws_manager.py
+
 import sys
 
 from typing import Dict

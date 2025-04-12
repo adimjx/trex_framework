@@ -20,6 +20,9 @@ from dotenv import load_dotenv
 load_dotenv()  # load environment variables from .env file located at project root
 
 CONFIG = {
+    # CORS & MIDDLEWARE
+    "PUBLIC_FRONTENT_URL": os.getenv("PUBLIC_FRONTEND_URL", "*"),
+
     # AUTH
     "AGENT_AUTHPASS": os.getenv("AGENT_AUTHPASS", "treacle_authpass"),
     # JWT
